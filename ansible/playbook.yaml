@@ -1,0 +1,11 @@
+---
+- name: Deploy updated web page
+  hosts: all
+  become: yes
+
+  tasks:
+    - name: Copy latest index.html
+      copy:
+        src: ../index.html
+        dest: /var/www/html/index.html
+
