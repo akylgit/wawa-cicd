@@ -23,6 +23,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ansible
 
+      - name: Disable SSH host key checking
+        run: |
+          echo -e "[defaults]\nhost_key_checking = False" > ansible.cfg
+
       - name: Test SSH connectivity with Ansible ping
         run: ansible -i inventory.ini all -m ping
 
