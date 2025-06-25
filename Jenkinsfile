@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     tools {
-        git 'Default' // This must match the Git installation name in Global Tool Configuration
+        git 'Default'
     }
 
     environment {
@@ -11,12 +11,6 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git 'https://github.com/akylgit/wawa-cicd.git'
-            }
-        }
-
         stage('Pre-deploy: Test SSH connectivity') {
             steps {
                 sh "ansible -i ${ANSIBLE_INVENTORY} all -m ping"
@@ -43,5 +37,4 @@ pipeline {
         }
     }
 }
-
 
