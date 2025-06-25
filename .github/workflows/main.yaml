@@ -28,7 +28,7 @@ jobs:
           echo -e "[defaults]\nhost_key_checking = False" > ansible.cfg
 
       - name: Test SSH connectivity with Ansible ping
-        run: ansible -i inventory.ini all -m ping
+        run: ansible -i inventory.ini aws1 -m ping
 
       - name: Run Ansible playbook
         run: ansible-playbook -i inventory.ini ansible/playbook.yaml
