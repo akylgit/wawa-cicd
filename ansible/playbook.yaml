@@ -1,11 +1,24 @@
 ---
-- name: Deploy updated web page
-  hosts: all
-  become: yes
+- name: Deploy to AWS1
+  hosts: aws1
+  become: true
 
   tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Ensure /var/www/html exists
+      file:
+        path: /var/www/html
+        state: directory
+
     - name: Copy latest index.html
       copy:
-        src: ../index.html
+        src: files/index.html
         dest: /var/www/html/index.html
-
