@@ -31,4 +31,4 @@ jobs:
         run: ansible -i inventory.ini aws1 -m ping
 
       - name: Run Ansible playbook
-        run: ansible-playbook -i inventory.ini ansible/playbook.yaml
+        run: ansible-playbook -i inventory.ini ansible/playbook.yaml --limit aws1
