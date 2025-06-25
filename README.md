@@ -25,4 +25,8 @@ SMALL PROJECT
 
   This creates an automatic workflow for building and deploying your web page.
 
+  4# WE CAN CHECK IN PUBLIC IP EC2 INSTANCE AND SEE
+  HELLO WAWA TEAM! MESSAGE
+  
+
 
