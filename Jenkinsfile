@@ -11,7 +11,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 // Clone your repo
-                git 'https://github.com/your-username/wawa-cicd.git'
+                git 'https://github.com/akylgit/wawa-cicd.git'
             }
         }
 
