@@ -1,25 +1,32 @@
 pipeline {
     agent any
 
-    tools {
-        git 'Default'
-    }
-
     environment {
         ANSIBLE_INVENTORY = 'inventory.ini'
         ANSIBLE_PLAYBOOK = 'ansible/playbook.yaml'
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                // Clone your repo
+                git url: 'https://github.com/akylgit/wawa-cicd.git', credentialsId: 'github-token'
+            }
+        }
+
         stage('Pre-deploy: Test SSH connectivity') {
             steps {
-                sh "ansible -i ${ANSIBLE_INVENTORY} all -m ping"
+                sshagent(['devops-key']) {
+                    sh 'ansible -i ${ANSIBLE_INVENTORY} all -m ping'
+                }
             }
         }
 
         stage('Deploy') {
             steps {
-                sh "ansible-playbook -i ${ANSIBLE_INVENTORY} ${ANSIBLE_PLAYBOOK}"
+                sshagent(['devops-key']) {
+                    sh "ansible-playbook -i ${ANSIBLE_INVENTORY} ${ANSIBLE_PLAYBOOK}"
+                }
             }
         }
     }
