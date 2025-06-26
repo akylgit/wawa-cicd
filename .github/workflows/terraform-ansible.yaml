@@ -1,4 +1,4 @@
-name: Provision 2 EC2 Instances & Configure with Ansible
+name: Destroy Previous & Re-Create EC2 Instances with Ansible
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - terraform-ansible
 
 jobs:
-  provision-and-configure:
+  destroy-and-recreate:
     runs-on: ubuntu-latest
 
     steps:
@@ -32,7 +32,11 @@ jobs:
         working-directory: ./infra
         run: terraform init
 
-      - name: Terraform Apply
+      - name: Terraform Destroy (Cleanup Previous Infra)
+        working-directory: ./infra
+        run: terraform destroy -auto-approve || true
+
+      - name: Terraform Apply (Create New Infra)
         working-directory: ./infra
         run: terraform apply -auto-approve
 
