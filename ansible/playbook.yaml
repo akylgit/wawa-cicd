@@ -1,6 +1,6 @@
 ---
 - name: Deploy to AWS1
-  hosts: aws1
+  hosts: all
   become: true
 
   tasks:
