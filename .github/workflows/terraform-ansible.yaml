@@ -1,4 +1,4 @@
-name: Provision EC2 Instances & Configure with Ansible
+name: Provision 2 EC2 Instances & Configure with Ansible
 
 on:
   push:
@@ -9,55 +9,60 @@ jobs:
   provision-and-configure:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_REGION: us-east-1
+
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ansible jq
-
-      - name: Set up Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
       - name: Terraform Init
-        working-directory: ./infra
         run: terraform init
 
-      - name: Terraform Destroy (destroy previous instances)
+      - name: Terraform Destroy (optional cleanup)
         working-directory: ./infra
         run: |
-          terraform destroy -auto-approve || echo "Nothing to destroy"
+          echo "Destroying previous resources if any..."
+          terraform destroy -auto-approve || echo "Nothing to destroy."
 
-      - name: Terraform Apply (create new instances)
+      - name: Terraform Apply
         working-directory: ./infra
         run: terraform apply -auto-approve
-
-      - name: Save Terraform output
         working-directory: ./infra
-        run: terraform output -json instance_public_ip > ips.json
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Save clean Terraform output to JSON
+        working-directory: ./infra
+        run: |
+          terraform output -json instance_public_ips > instance_ips_raw.json
+          cat instance_ips_raw.json
+          cp instance_ips_raw.json $GITHUB_WORKSPACE/ips.json
 
       - name: Generate Ansible Inventory
         run: |
           echo "[webservers]" > inventory.ini
-          IP=$(jq -r '.' ips.json)
-          echo "web ansible_host=$IP ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> inventory.ini
+          jq -r '.[]' ips.json >> inventory.ini
+          echo "--- Inventory Generated ---"
           cat inventory.ini
 
-      - name: Add SSH Key
+      - name: Inject SSH Private Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEVOPS_SSH_KEY }}" > ~/.ssh/devops-key
           chmod 600 ~/.ssh/devops-key
 
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
       - name: Run Ansible Playbook
         run: |
-          ansible-playbook -i inventory.ini ansible/playbook.yaml --private-key ~/.ssh/devops-key -u ubuntu
+          ansible-playbook -i inventory.ini ansible/playbook.yaml \
+            --private-key ~/.ssh/devops-key -u ubuntu
