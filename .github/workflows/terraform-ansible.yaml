@@ -20,10 +20,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Install dependencies (Ansible, jq, ssh-agent)
+      - name: Install dependencies (Ansible, jq)
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq ansible
+          sudo apt-get install -y ansible jq
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v2
@@ -36,16 +36,11 @@ jobs:
         working-directory: ./infra
         run: terraform apply -auto-approve
 
-      - name: Get EC2 Public IPs from Terraform Output
-        id: tf-output
+      - name: Generate Ansible Inventory from Terraform Output
         working-directory: ./infra
         run: |
-          echo "INSTANCE_IPS=$(terraform output -json instance_public_ips)" >> $GITHUB_ENV
-
-      - name: Generate Ansible Inventory for Multiple Hosts
-        run: |
-          echo "[webservers]" > inventory.ini
-          echo "${{ env.INSTANCE_IPS }}" | jq -r '.[]' >> inventory.ini
+          echo "[webservers]" > ../../inventory.ini
+          terraform output -json instance_public_ips | jq -r '.[]' >> ../../inventory.ini
 
       - name: Add SSH Key
         run: |
