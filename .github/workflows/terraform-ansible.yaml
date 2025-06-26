@@ -34,7 +34,10 @@ jobs:
 
       - name: Terraform Destroy (Cleanup Previous Infra)
         working-directory: ./infra
-        run: terraform destroy -auto-approve || true
+        # Ensure destroy always runs, and logs output
+        run: |
+          echo "Running terraform destroy..."
+          terraform destroy -auto-approve || echo "No resources to destroy or destroy failed."
 
       - name: Terraform Apply (Create New Infra)
         working-directory: ./infra
@@ -48,9 +51,17 @@ jobs:
         working-directory: ./infra
         run: |
           echo "[webservers]" > ../../inventory.ini
-          terraform output -json instance_public_ips | jq -r '.[]' >> ../../inventory.ini
-          echo "--- Inventory Generated ---"
-          cat ../../inventory.ini
+
+          IPS_JSON=$(terraform output -json instance_public_ips)
+          echo "Terraform instance_public_ips output: $IPS_JSON"
+
+          if [[ "$IPS_JSON" == "null" || "$IPS_JSON" == "[]" ]]; then
+            echo "No instances found. Skipping inventory population."
+          else
+            echo "$IPS_JSON" | jq -r '.[]' >> ../../inventory.ini
+            echo "--- Inventory Generated ---"
+            cat ../../inventory.ini
+          fi
 
       - name: Add SSH Key
         run: |
