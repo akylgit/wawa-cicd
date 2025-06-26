@@ -42,20 +42,17 @@ jobs:
         working-directory: ./infra
         run: terraform apply -auto-approve
 
-      - name: Debug Terraform Output
+      - name: Save Terraform output to file
         working-directory: ./infra
-        run: terraform output -json
+        run: terraform output -json instance_public_ips > ../../ips.json
 
-      - name: Generate Ansible Inventory from Terraform Output
-        working-directory: ./infra
+      - name: Show Terraform output file content
+        run: cat ../../ips.json
+
+      - name: Generate Ansible Inventory from Terraform output file
         run: |
           echo "[webservers]" > ../../inventory.ini
-
-          echo "Terraform instance_public_ips output:"
-          terraform output -json instance_public_ips
-
-          terraform output -json instance_public_ips | jq -r '.[]' >> ../../inventory.ini
-
+          cat ../../ips.json | jq -r '.[]' >> ../../inventory.ini
           echo "--- Inventory Generated ---"
           cat ../../inventory.ini
 

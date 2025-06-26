@@ -1,2 +1,6 @@
 devops-key.pem
 azure-user.pem
+# Terraform tf state files 
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
