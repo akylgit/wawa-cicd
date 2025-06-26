@@ -36,23 +36,27 @@ jobs:
         working-directory: ./infra
         run: |
           echo "Destroying previous resources if any..."
+          # Use -lock=false if state locking is not desired in cleanup or causes issues
           terraform destroy -auto-approve || echo "Nothing to destroy."
 
       - name: Terraform Apply
         working-directory: ./infra
         run: terraform apply -auto-approve
 
+      # This step needs to output just the array of IPs.
+      # Assuming 'instance_public_ips' is an output variable that is a list of strings (IPs).
       - name: Save Terraform output to JSON file
         working-directory: ./infra
-        run: terraform output -json instance_public_ips > $GITHUB_WORKSPACE/ips.json
+        run: terraform output -json | jq -r '.instance_public_ips[]' > $GITHUB_WORKSPACE/ips.txt
 
-      - name: Show Terraform output
-        run: cat ips.json
+      - name: Show extracted IPs
+        run: cat ips.txt
 
       - name: Generate Ansible Inventory
         run: |
           echo "[webservers]" > inventory.ini
-          cat ips.json | jq -r '.[]' >> inventory.ini
+          # Read IPs directly from ips.txt where each IP is on a new line
+          cat ips.txt >> inventory.ini
           echo "--- Inventory Generated ---"
           cat inventory.ini
 
@@ -62,7 +66,23 @@ jobs:
           echo "${{ secrets.DEVOPS_SSH_KEY }}" > ~/.ssh/devops-key
           chmod 600 ~/.ssh/devops-key
 
-      - name: Run Ansible Playbook
+      - name: Wait for EC2 instances to be ready and Run Ansible Playbook
+        # Add a delay and retry logic for Ansible to ensure instances are fully up and SSHable
         run: |
-          ansible-playbook -i inventory.ini ansible/playbook.yaml \
-            --private-key ~/.ssh/devops-key -u ubuntu
+          ansible_cmd="ansible-playbook -i inventory.ini ansible/playbook.yaml --private-key ~/.ssh/devops-key -u ubuntu"
+          max_retries=5
+          retry_interval=30
+          for i in $(seq 1 $max_retries); do
+            echo "Attempt $i/$max_retries: Running Ansible Playbook..."
+            if eval "$ansible_cmd"; then
+              echo "Ansible playbook ran successfully."
+              break
+            else
+              echo "Ansible playbook failed. Retrying in $retry_interval seconds..."
+              sleep $retry_interval
+            fi
+            if [ $i -eq $max_retries ]; then
+              echo "Max retries reached. Ansible playbook failed."
+              exit 1
+            fi
+          done
