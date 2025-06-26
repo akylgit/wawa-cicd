@@ -27,7 +27,7 @@ data "aws_security_group" "default" {
 
 # 2. Then resource(s) that depend on them
 resource "aws_instance" "web" {
-  count                  = 2
+  count                  = 1
   ami                    = "ami-0a7d80731ae1b2435"
   instance_type          = "t2.micro"
   key_name               = "devops-key"

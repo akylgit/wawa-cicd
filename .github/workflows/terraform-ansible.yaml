@@ -1,4 +1,4 @@
-name: Destroy Previous & Re-Create EC2 Instances with Ansible
+name: Provision EC2 Instances & Configure with Ansible
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - terraform-ansible
 
 jobs:
-  destroy-and-recreate:
+  provision-and-configure:
     runs-on: ubuntu-latest
 
     steps:
@@ -20,7 +20,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Install dependencies (Ansible, jq)
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ansible jq
@@ -32,29 +32,29 @@ jobs:
         working-directory: ./infra
         run: terraform init
 
-      - name: Terraform Destroy (Cleanup Previous Infra)
+      - name: Terraform Destroy (optional cleanup)
         working-directory: ./infra
         run: |
-          echo "Running terraform destroy..."
-          terraform destroy -auto-approve || echo "No resources to destroy or destroy failed."
+          echo "Destroying previous resources if any..."
+          terraform destroy -auto-approve || echo "Nothing to destroy."
 
-      - name: Terraform Apply (Create New Infra)
+      - name: Terraform Apply
         working-directory: ./infra
         run: terraform apply -auto-approve
 
-      - name: Save Terraform output to file
+      - name: Save Terraform output to JSON file
         working-directory: ./infra
-        run: terraform output -json instance_public_ips > ../../ips.json
+        run: terraform output -json instance_public_ips > $GITHUB_WORKSPACE/ips.json
 
-      - name: Show Terraform output file content
-        run: cat ../../ips.json
+      - name: Show Terraform output
+        run: cat ips.json
 
-      - name: Generate Ansible Inventory from Terraform output file
+      - name: Generate Ansible Inventory
         run: |
-          echo "[webservers]" > ../../inventory.ini
-          cat ../../ips.json | jq -r '.[]' >> ../../inventory.ini
+          echo "[webservers]" > inventory.ini
+          cat ips.json | jq -r '.[]' >> inventory.ini
           echo "--- Inventory Generated ---"
-          cat ../../inventory.ini
+          cat inventory.ini
 
       - name: Add SSH Key
         run: |
