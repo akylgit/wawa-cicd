@@ -32,21 +32,14 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Get Terraform Output to ips.json
+      - name: Save Terraform Output to ips.json
         run: terraform output -json instance_public_ips > ips.json
         working-directory: ./infra
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Clean old inventory.ini if exists
-        run: |
-          if [ -f inventory.ini ]; then
-            rm inventory.ini
-            echo "Old inventory.ini removed"
-          fi
+      - name: Clean old inventory if exists
+        run: rm -f inventory.ini
 
-      - name: Generate dynamic inventory.ini from ips.json
+      - name: Generate dynamic inventory.ini
         run: |
           echo "[aws]" > inventory.ini
           index=1
@@ -57,9 +50,18 @@ jobs:
           echo "--- Inventory Generated ---"
           cat inventory.ini
 
+      - name: Inject SSH Private Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEVOPS_SSH_KEY }}" > ~/.ssh/devops-key
+          chmod 600 ~/.ssh/devops-key
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
       - name: Run Ansible Playbook
-        uses: appleboy/ansible-playbook-action@v0.4.3
-        with:
-          playbook: ./ansible/servers-playbook.yaml
-          inventory: ./inventory.ini
-          ssh-private-key: ${{ secrets.DEVOPS_SSH_KEY }}
+        run: ansible-playbook -i inventory.ini ansible/servers-playbook.yaml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: False
