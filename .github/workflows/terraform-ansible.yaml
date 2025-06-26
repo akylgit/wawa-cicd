@@ -22,13 +22,19 @@ jobs:
 
       - name: Terraform Init
         run: terraform init
+
+      - name: Terraform Destroy (destroy previous instances)
         working-directory: ./infra
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          terraform destroy -auto-approve || echo "Nothing to destroy"
 
       - name: Terraform Apply
         id: apply
+      - name: Terraform Apply (create new instances)
+        working-directory: ./infra
         run: terraform apply -auto-approve
         working-directory: ./infra
         env:
@@ -37,12 +43,16 @@ jobs:
 
       - name: Save Terraform Output to ips.json
         run: terraform output -json instance_public_ips > ips.json
+      - name: Save Terraform output
         working-directory: ./infra
 
       - name: Clean old inventory if exists
         run: rm -f inventory.ini
 
       - name: Generate dynamic inventory.ini
+        run: terraform output -json instance_public_ip > ips.json
+
+      - name: Generate Ansible Inventory
         run: |
           echo "[aws]" > inventory.ini
           index=1
@@ -51,6 +61,9 @@ jobs:
             index=$((index+1))
           done
           echo "--- Inventory Generated ---"
+          echo "[webservers]" > inventory.ini
+          IP=$(jq -r '.' ips.json)
+          echo "web ansible_host=$IP ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> inventory.ini
           cat inventory.ini
 
       - name: Inject SSH Private Key
@@ -68,3 +81,5 @@ jobs:
         run: ansible-playbook -i inventory.ini ansible/servers-playbook.yaml
         env:
           ANSIBLE_HOST_KEY_CHECKING: False
+        run: |
+          ansible-playbook -i inventory.ini ansible/playbook.yaml --private-key ~/.ssh/devops-key -u ubuntu
