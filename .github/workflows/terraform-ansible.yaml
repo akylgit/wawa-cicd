@@ -36,11 +36,17 @@ jobs:
         working-directory: ./infra
         run: terraform apply -auto-approve
 
+      - name: Debug Terraform Output
+        working-directory: ./infra
+        run: terraform output -json
+
       - name: Generate Ansible Inventory from Terraform Output
         working-directory: ./infra
         run: |
           echo "[webservers]" > ../../inventory.ini
           terraform output -json instance_public_ips | jq -r '.[]' >> ../../inventory.ini
+          echo "--- Inventory Generated ---"
+          cat ../../inventory.ini
 
       - name: Add SSH Key
         run: |
