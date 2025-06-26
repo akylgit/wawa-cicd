@@ -17,11 +17,14 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Set up Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
       - name: Terraform Init
         working-directory: ./infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: terraform init
 
       - name: Terraform Destroy (clean up old infra)
@@ -31,7 +34,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: terraform destroy -auto-approve || echo "Nothing to destroy."
 
-      - name: Terraform Apply (provision new instances)
+      - name: Terraform Apply (create new instances)
         working-directory: ./infra
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -46,14 +49,15 @@ jobs:
         run: rm -f inventory.ini
 
       - name: Generate Ansible Inventory
-        working-directory: ./infra
         run: |
-          echo "[aws]" > ../inventory.ini
-          jq -r '.[]' ips.json | while read ip; do
-            echo "aws ansible_host=$ip ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> ../inventory.ini
+          echo "[aws]" > inventory.ini
+          index=1
+          for ip in $(jq -r '.[]' ./infra/ips.json); do
+            echo "aws${index} ansible_host=${ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> inventory.ini
+            index=$((index+1))
           done
           echo "--- Inventory Generated ---"
-          cat ../inventory.ini
+          cat inventory.ini
 
       - name: Inject SSH Private Key
         run: |
@@ -61,7 +65,7 @@ jobs:
           echo "${{ secrets.DEVOPS_SSH_KEY }}" > ~/.ssh/devops-key
           chmod 600 ~/.ssh/devops-key
 
-      - name: Install Ansible & JQ
+      - name: Install Ansible and jq
         run: |
           sudo apt-get update
           sudo apt-get install -y ansible jq
@@ -69,5 +73,4 @@ jobs:
       - name: Run Ansible Playbook
         env:
           ANSIBLE_HOST_KEY_CHECKING: False
-        run: |
-          ansible-playbook -i inventory.ini ansible/playbook.yaml --private-key ~/.ssh/devops-key -u ubuntu
+        run: ansible-playbook -i inventory.ini ansible/servers-playbook.yaml --private-key ~/.ssh/devops-key -u ubuntu
