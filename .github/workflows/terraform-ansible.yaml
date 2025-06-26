@@ -1,0 +1,76 @@
+name: Provision 2 EC2 Instances & Configure with Ansible
+
+on:
+  push:
+    branches:
+      - terraform-ansible
+
+jobs:
+  provision-and-configure:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_REGION: us-east-1
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+
+      - name: Terraform Init
+        working-directory: ./infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: terraform init
+
+      - name: Terraform Destroy (clean up old infra)
+        working-directory: ./infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: terraform destroy -auto-approve || echo "Nothing to destroy."
+
+      - name: Terraform Apply (create new instances)
+        working-directory: ./infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: terraform apply -auto-approve
+
+      - name: Save Terraform Output to ips.json
+        working-directory: ./infra
+        run: terraform output -json instance_public_ips > ips.json
+
+      - name: Clean old inventory if exists
+        run: rm -f inventory.ini
+
+      - name: Generate Ansible Inventory
+        run: |
+          echo "[aws]" > inventory.ini
+          index=1
+          for ip in $(jq -r '.[]' ./infra/ips.json); do
+            echo "aws${index} ansible_host=${ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> inventory.ini
+            index=$((index+1))
+          done
+          echo "--- Inventory Generated ---"
+          cat inventory.ini
+
+      - name: Inject SSH Private Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEVOPS_SSH_KEY }}" > ~/.ssh/devops-key
+          chmod 600 ~/.ssh/devops-key
+
+      - name: Install Ansible and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible jq
+
+      - name: Run Ansible Playbook
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: False
+        run: ansible-playbook -i inventory.ini ansible/servers-playbook.yaml --private-key ~/.ssh/devops-key -u ubuntu
