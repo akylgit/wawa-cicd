@@ -22,32 +22,34 @@ jobs:
 
       - name: Terraform Init
         run: terraform init
-
-      - name: Terraform Destroy (optional cleanup)
         working-directory: ./infra
-        run: |
-          echo "Destroying previous resources if any..."
-          terraform destroy -auto-approve || echo "Nothing to destroy."
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Terraform Apply
-        working-directory: ./infra
+        id: apply
         run: terraform apply -auto-approve
         working-directory: ./infra
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Save clean Terraform output to JSON
+      - name: Save Terraform Output to ips.json
+        run: terraform output -json instance_public_ips > ips.json
         working-directory: ./infra
-        run: |
-          terraform output -json instance_public_ips > instance_ips_raw.json
-          cat instance_ips_raw.json
-          cp instance_ips_raw.json $GITHUB_WORKSPACE/ips.json
 
-      - name: Generate Ansible Inventory
+      - name: Clean old inventory if exists
+        run: rm -f inventory.ini
+
+      - name: Generate dynamic inventory.ini
         run: |
-          echo "[webservers]" > inventory.ini
-          jq -r '.[]' ips.json >> inventory.ini
+          echo "[aws]" > inventory.ini
+          index=1
+          for ip in $(jq -r '.[]' ./infra/ips.json); do
+            echo "aws${index} ansible_host=${ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> inventory.ini
+            index=$((index+1))
+          done
           echo "--- Inventory Generated ---"
           cat inventory.ini
 
@@ -63,6 +65,6 @@ jobs:
           sudo apt-get install -y ansible
 
       - name: Run Ansible Playbook
-        run: |
-          ansible-playbook -i inventory.ini ansible/playbook.yaml \
-            --private-key ~/.ssh/devops-key -u ubuntu
+        run: ansible-playbook -i inventory.ini ansible/servers-playbook.yaml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: False
