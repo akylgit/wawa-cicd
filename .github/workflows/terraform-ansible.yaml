@@ -32,37 +32,26 @@ jobs:
         working-directory: ./infra
         run: terraform init
 
-      - name: Terraform Destroy (optional cleanup)
-        working-directory: ./infra
-        run: |
-          echo "Destroying previous resources if any..."
-          terraform destroy -auto-approve || echo "Nothing to destroy."
-
       - name: Terraform Apply
         working-directory: ./infra
         run: terraform apply -auto-approve
 
-      - name: Save clean Terraform output to JSON
+      - name: Save Terraform output to clean JSON
         working-directory: ./infra
         run: |
-          terraform output -json instance_public_ips > instance_ips_raw.json
-          cat instance_ips_raw.json
-          cp instance_ips_raw.json $GITHUB_WORKSPACE/ips.json
+          terraform output -json instance_public_ips > $GITHUB_WORKSPACE/ips.json
+          echo "Saved instance IPs:"
+          cat $GITHUB_WORKSPACE/ips.json
 
       - name: Generate Ansible Inventory
         run: |
-          echo "[webservers]" > inventory.ini
-          jq -r '.[]' ips.json >> inventory.ini
-          echo "--- Inventory Generated ---"
-          cat inventory.ini
+          echo "[aws]" > inventory.ini
+          index=1
+          for ip in $(jq -r '.[]' ips.json); do
+            echo "aws${index} ansible_host=${ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> inventory.ini
+            index=$((index+1))
+          done
 
-      - name: Add SSH Key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEVOPS_SSH_KEY }}" > ~/.ssh/devops-key
-          chmod 600 ~/.ssh/devops-key
-
-      - name: Run Ansible Playbook
-        run: |
-          ansible-playbook -i inventory.ini ansible/playbook.yaml \
-            --private-key ~/.ssh/devops-key -u ubuntu
+          echo "[azure]" >> inventory.ini
+          echo "azure1 ansible_host=172.190.160.163 ansible_user=azure-user ansible_ssh_private_key_file=/home/vagrant/project-ansible/node-servers/azure/azure-user.pem" >> inventory.ini
+          echo "azure2 ansible_host=20.120.100.154 ansible_user=azure-user ansible_ssh_
