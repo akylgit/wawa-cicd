@@ -9,9 +9,12 @@ jobs:
   provision-and-configure:
     runs-on: ubuntu-latest
 
+    # Provide AWS credentials and region via environment variables
     env:
       AWS_DEFAULT_REGION: us-east-1
       AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     steps:
       - name: Checkout repo
@@ -20,31 +23,37 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
+      # Initialize Terraform (needs AWS creds for S3 backend)
       - name: Terraform Init
         working-directory: ./infra
         run: terraform init
 
+      # Destroy any existing EC2 instances (immutable infrastructure approach)
       - name: Terraform Destroy (destroy previous instances)
         working-directory: ./infra
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: terraform destroy -auto-approve || echo "Nothing to destroy"
 
+      # Create new EC2 instances
       - name: Terraform Apply (create new instances)
         working-directory: ./infra
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: terraform apply -auto-approve
 
+      # Save public IPs of new instances to file
       - name: Save Terraform Output to ips.json
         working-directory: ./infra
         run: terraform output -json instance_public_ips > ips.json
 
+      # Install Ansible and jq before using them
+      - name: Install Ansible and jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible jq
+
+      # Remove old inventory if present
       - name: Clean old inventory if exists
         run: rm -f inventory.ini
 
+      # Generate Ansible inventory from Terraform output
       - name: Generate Ansible Inventory
         run: |
           echo "[aws]" > inventory.ini
@@ -56,17 +65,14 @@ jobs:
           echo "--- Inventory Generated ---"
           cat inventory.ini
 
+      # Add the SSH private key from secrets
       - name: Inject SSH Private Key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.DEVOPS_SSH_KEY }}" > ~/.ssh/devops-key
           chmod 600 ~/.ssh/devops-key
 
-      - name: Install Ansible
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ansible jq
-
+      # Run the Ansible playbook
       - name: Run Ansible Playbook
         env:
           ANSIBLE_HOST_KEY_CHECKING: False
