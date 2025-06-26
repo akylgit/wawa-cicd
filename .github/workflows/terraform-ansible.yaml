@@ -1,4 +1,4 @@
-name: Provision EC2 Instances & Configure with Ansible
+name: Provision 2 EC2 Instances & Configure with Ansible
 
 on:
   push:
@@ -9,49 +9,57 @@ jobs:
   provision-and-configure:
     runs-on: ubuntu-latest
 
+    env:
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_REGION: us-east-1
+
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ansible jq
-
-      - name: Set up Terraform
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
 
       - name: Terraform Init
-        working-directory: ./infra
         run: terraform init
+        working-directory: ./infra
 
       - name: Terraform Apply
-        working-directory: ./infra
+        id: apply
         run: terraform apply -auto-approve
-
-      - name: Save Terraform output to clean JSON
         working-directory: ./infra
-        run: |
-          terraform output -json instance_public_ips > $GITHUB_WORKSPACE/ips.json
-          echo "Saved instance IPs:"
-          cat $GITHUB_WORKSPACE/ips.json
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Generate Ansible Inventory
+      - name: Get Terraform Output to ips.json
+        run: terraform output -json instance_public_ips > ips.json
+        working-directory: ./infra
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Clean old inventory.ini if exists
+        run: |
+          if [ -f inventory.ini ]; then
+            rm inventory.ini
+            echo "Old inventory.ini removed"
+          fi
+
+      - name: Generate dynamic inventory.ini from ips.json
         run: |
           echo "[aws]" > inventory.ini
           index=1
-          for ip in $(jq -r '.[]' ips.json); do
+          for ip in $(jq -r '.[]' ./infra/ips.json); do
             echo "aws${index} ansible_host=${ip} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> inventory.ini
             index=$((index+1))
           done
+          echo "--- Inventory Generated ---"
+          cat inventory.ini
 
-          echo "[azure]" >> inventory.ini
-          echo "azure1 ansible_host=172.190.160.163 ansible_user=azure-user ansible_ssh_private_key_file=/home/vagrant/project-ansible/node-servers/azure/azure-user.pem" >> inventory.ini
-          echo "azure2 ansible_host=20.120.100.154 ansible_user=azure-user ansible_ssh_
+      - name: Run Ansible Playbook
+        uses: appleboy/ansible-playbook-action@v0.4.3
+        with:
+          playbook: ./ansible/servers-playbook.yaml
+          inventory: ./inventory.ini
+          ssh-private-key: ${{ secrets.DEVOPS_SSH_KEY }}
