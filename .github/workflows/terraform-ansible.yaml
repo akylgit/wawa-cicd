@@ -29,30 +29,31 @@ jobs:
         uses: hashicorp/setup-terraform@v2
 
       - name: Terraform Init
-        working-directory: ./infra
         run: terraform init
+        working-directory: ./infra
 
       - name: Terraform Destroy (optional cleanup)
-        working-directory: ./infra
         run: |
           echo "Destroying previous resources if any..."
           terraform destroy -auto-approve || echo "Nothing to destroy."
+        working-directory: ./infra
 
       - name: Terraform Apply
-        working-directory: ./infra
         run: terraform apply -auto-approve
+        working-directory: ./infra
 
       - name: Save clean Terraform output to JSON
-        working-directory: ./infra
         run: |
           terraform output -json instance_public_ips > instance_ips_raw.json
-          cat instance_ips_raw.json
           cp instance_ips_raw.json $GITHUB_WORKSPACE/ips.json
+        working-directory: ./infra
 
       - name: Generate Ansible Inventory
         run: |
           echo "[webservers]" > inventory.ini
-          jq -r '.[]' ips.json >> inventory.ini
+          jq -r '.[]' ips.json | while read ip; do
+            echo "web ansible_host=$ip ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/devops-key" >> inventory.ini
+          done
           echo "--- Inventory Generated ---"
           cat inventory.ini
 
@@ -64,5 +65,4 @@ jobs:
 
       - name: Run Ansible Playbook
         run: |
-          ansible-playbook -i inventory.ini ansible/playbook.yaml \
-            --private-key ~/.ssh/devops-key -u ubuntu
+          ansible-playbook -i inventory.ini ansible/playbook.yaml
